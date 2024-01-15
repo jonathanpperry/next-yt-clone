@@ -1,14 +1,16 @@
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { type GetServerSidePropsContext } from "next";
 import {
   getServerSession,
-  type DefaultSession,
   type NextAuthOptions,
+  type DefaultSession,
 } from "next-auth";
-import DiscordProvider from "next-auth/providers/discord";
+// import GoogleProvider from "next-auth/providers/google";
+import EmailProvider from "next-auth/providers/email";
+// import { createTransport } from "nodemailer";
 
-import { env } from "~/env";
-import { db } from "~/server/db";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { env } from "~/env.js";
+import { prisma } from "~/server/db";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -18,17 +20,12 @@ import { db } from "~/server/db";
  */
 declare module "next-auth" {
   interface Session extends DefaultSession {
-    user: DefaultSession["user"] & {
+    user: {
       id: string;
-      // ...other properties
+      //* add other properties such as role, password, address, etc (all properties for user that are not defined)
       // role: UserRole;
-    };
+    } & DefaultSession["user"];
   }
-
-  // interface User {
-  //   // ...other properties
-  //   // role: UserRole;
-  // }
 }
 
 /**
@@ -38,20 +35,30 @@ declare module "next-auth" {
  */
 export const authOptions: NextAuthOptions = {
   callbacks: {
-    session: ({ session, user }) => ({
-      ...session,
-      user: {
-        ...session.user,
-        id: user.id,
-      },
-    }),
+    //? i beleive since user is returned by oAuth provider, we are trying to make it equal to the session object
+    session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id;
+        // session.user.role = user.role; <-- put other properties on the session here
+      }
+      return session;
+    },
   },
-  adapter: PrismaAdapter(db),
+  adapter: PrismaAdapter(prisma),
   providers: [
-    DiscordProvider({
-      clientId: env.DISCORD_CLIENT_ID,
-      clientSecret: env.DISCORD_CLIENT_SECRET,
+    EmailProvider({
+      server: {
+        host: env.EMAIL_SERVER_HOST,
+
+        port: env.EMAIL_SERVER_PORT,
+        auth: {
+          user: env.EMAIL_SERVER_USER,
+          pass: env.EMAIL_SERVER_PASSWORD,
+        },
+      },
+      from: env.EMAIL_FROM,
     }),
+
     /**
      * ...add more providers here.
      *
@@ -62,6 +69,13 @@ export const authOptions: NextAuthOptions = {
      * @see https://next-auth.js.org/providers/github
      */
   ],
+
+  theme: {
+    colorScheme: "light", // "auto" | "dark" | "light"
+    brandColor: "#11999E", // Hex color code
+    logo: "/logo.svg", // Absolute URL to image
+    buttonText: "#FFFFFF", // Hex color code
+  },
 };
 
 /**
